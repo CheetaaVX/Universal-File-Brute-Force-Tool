@@ -46,7 +46,7 @@ sudo apt install libreoffice
 ## File Structure
 ```bash
 bruteforce_tool/
-├── bruteforce.py          # Main script
+├── BrootFile.py          # Main script
 ├── requirements.txt       # Python dependencies
 ├── wordlists/            # Directory for password lists
 │   ├── rockyou.txt       # Common passwords
@@ -84,31 +84,31 @@ SSH Keys - Encrypted private keys (.id_rsa) - Requires ssh-keygen tool
 
 ```bash
 # Test a KeePass database
-python bruteforce.py database.kdbx rockyou.txt
+python BrootFile.py database.kdbx rockyou.txt
 
 # Test a ZIP file  
-python bruteforce.py backup.zip common_passwords.txt
+python BrootFile.py backup.zip common_passwords.txt
 
 # Test with custom wordlist
-python bruteforce.py secret.rar my_passwords.txt
+python BrootFile.py secret.rar my_passwords.txt
 ```
 ###  Multi-threaded Usage
 
 ```bash
 # Use 4 threads
-python bruteforce.py target.kdbx wordlist.txt -t 4
+python BrootFile.py target.kdbx wordlist.txt -t 4
 
 # Use 8 threads (faster)
-python bruteforce.py target.kdbx wordlist.txt -t 8
+python BrootFile.py target.kdbx wordlist.txt -t 8
 
 # Use all available cores (adjust based on your CPU)
-python bruteforce.py target.kdbx wordlist.txt -t 16
+python BrootFile.py target.kdbx wordlist.txt -t 16
 ```
 ## Command Line Options
 
 ### Syntax
  ```bash
-python bruteforce.py [TARGET_FILE] [WORDLIST_FILE] [OPTIONS]
+python BrootFile.py [TARGET_FILE] [WORDLIST_FILE] [OPTIONS]
 ```
 ### Options Table
 
