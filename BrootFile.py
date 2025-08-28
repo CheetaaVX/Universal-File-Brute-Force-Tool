@@ -14,6 +14,8 @@ import argparse
 import threading
 import time
 import queue
+import subprocess
+import tempfile
 from pathlib import Path
 
 # Import optional dependencies
@@ -29,6 +31,19 @@ try:
     ZIP_SUPPORT = True
 except ImportError:
     ZIP_SUPPORT = False
+
+try:
+    import rarfile
+    RAR_SUPPORT = True
+except ImportError:
+    RAR_SUPPORT = False
+
+try:
+    from Crypto.PublicKey import RSA
+    from Crypto.Cipher import PKCS1_OAEP, AES
+    SSH_SUPPORT = True
+except ImportError:
+    SSH_SUPPORT = False
 
 class UniversalBruteForcer:
     def __init__(self, target_file):
@@ -55,11 +70,114 @@ class UniversalBruteForcer:
             return '7z'
         elif ext == '.pdf':
             return 'pdf'
-        elif ext in ['.docx', '.xlsx', '.pptx']:
+        elif ext in ['.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt']:
             return 'office'
-        elif ext in ['.id_rsa', '.ssh']:
+        elif ext in ['.id_rsa', '.ssh', '.pem', '.key']:
             return 'ssh'
         return 'unknown'
+    
+    def try_password_7z(self, password):
+        """Try password for 7z archives using 7z command line tool"""
+        try:
+            # Create a temporary directory for extraction attempt
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Build the command to test the password
+                cmd = [
+                    '7z', 'x', f'-p{password}', 
+                    '-y',  # Assume yes on all queries
+                    '-o' + tmpdir,  # Output directory
+                    self.target_file
+                ]
+                
+                # Run the command and capture output
+                result = subprocess.run(
+                    cmd, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.PIPE,
+                    timeout=5  # Timeout after 5 seconds
+                )
+                
+                # Check if extraction was successful
+                if result.returncode == 0:
+                    return True
+                
+                # Check for specific error messages that indicate wrong password
+                error_output = result.stderr.decode('utf-8', errors='ignore')
+                if "Wrong password" in error_output or "CRC Failed" in error_output:
+                    return False
+                    
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, Exception):
+            pass
+            
+        return False
+    
+    def try_password_rar(self, password):
+        """Try password for RAR archives"""
+        if not RAR_SUPPORT:
+            print("RAR support requires 'pip install rarfile'")
+            return False
+            
+        try:
+            with rarfile.RarFile(self.target_file) as rf:
+                rf.setpassword(password)
+                # Try to read the first file in the archive
+                file_list = rf.namelist()
+                if file_list:
+                    with rf.open(file_list[0], 'r', pwd=password.encode()) as f:
+                        f.read(1)  # Just read one byte to test
+                    return True
+            return False
+        except (rarfile.BadRarFile, rarfile.RarCannotExec, rarfile.RarWrongPassword, Exception):
+            return False
+    
+    def try_password_pdf(self, password):
+        """Try password for PDF files using qpdf"""
+        try:
+            # Use qpdf to test the password
+            cmd = [
+                'qpdf', '--password=' + password, 
+                '--check', self.target_file
+            ]
+            
+            result = subprocess.run(
+                cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                timeout=5
+            )
+            
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError, Exception):
+            return False
+    
+    def try_password_office(self, password):
+        """Try password for Office documents using msoffice-crypto"""
+        try:
+            # Try to import msoffice-crypto
+            from msoffice.crypto import OfficeCrypto
+            crypto = OfficeCrypto(self.target_file)
+            return crypto.load_key(password=password.encode())
+        except ImportError:
+            print("Office support requires 'pip install msoffice-crypto'")
+            return False
+        except Exception:
+            return False
+    
+    def try_password_ssh(self, password):
+        """Try password for SSH private keys"""
+        if not SSH_SUPPORT:
+            print("SSH key support requires 'pip install pycryptodome'")
+            return False
+            
+        try:
+            with open(self.target_file, 'rb') as f:
+                key_data = f.read()
+            
+            # Try to import the key with the password
+            key = RSA.import_key(key_data, passphrase=password)
+            return key is not None
+        except (ValueError, TypeError, Exception):
+            return False
     
     def try_password(self, password):
         """Try password for various file types"""
@@ -77,10 +195,28 @@ class UniversalBruteForcer:
                 
             elif self.file_type == 'zip' and ZIP_SUPPORT:
                 with zipfile.ZipFile(self.target_file) as zf:
-                    zf.testzip()  # Quick test
-                    return True
-                    
-            # Add more file type handlers here as needed
+                    # Try to read the first file in the archive
+                    file_list = zf.namelist()
+                    if file_list:
+                        with zf.open(file_list[0], pwd=password.encode()) as f:
+                            f.read(1)  # Just read one byte to test
+                        return True
+                return False
+                
+            elif self.file_type == 'rar':
+                return self.try_password_rar(password)
+                
+            elif self.file_type == '7z':
+                return self.try_password_7z(password)
+                
+            elif self.file_type == 'pdf':
+                return self.try_password_pdf(password)
+                
+            elif self.file_type == 'office':
+                return self.try_password_office(password)
+                
+            elif self.file_type == 'ssh':
+                return self.try_password_ssh(password)
                     
         except (CredentialsError, RuntimeError, Exception):
             pass
@@ -110,7 +246,10 @@ def brute_force_single(target_file, wordlist):
             for password in f:
                 if brute_forcer.found:
                     break
-                brute_forcer.try_password(password)
+                if brute_forcer.try_password(password):
+                    brute_forcer.password = password.strip()
+                    brute_forcer.found = True
+                    break
                     
     except KeyboardInterrupt:
         print("\n[!] Brute force interrupted by user")
@@ -196,9 +335,41 @@ def main():
         print(f"Error: Wordlist '{args.wordlist}' not found")
         return
     
-    # Check dependencies
+    # Check external dependencies based on file type
+    file_ext = Path(args.target_file).suffix.lower()
+    
+    if file_ext == '.7z':
+        try:
+            subprocess.run(['7z', '--help'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            print("[+] 7z utility found")
+        except (FileNotFoundError, subprocess.SubprocessError):
+            print("[-] Error: 7z utility not found. Install it to support 7z files.")
+            print("    On Ubuntu/Debian: sudo apt install p7zip-full")
+            print("    On macOS: brew install p7zip")
+            print("    On Windows: Download from https://www.7-zip.org/")
+            return
+    
+    if file_ext == '.pdf':
+        try:
+            subprocess.run(['qpdf', '--help'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            print("[+] qpdf utility found")
+        except (FileNotFoundError, subprocess.SubprocessError):
+            print("[-] Error: qpdf utility not found. Install it to support PDF files.")
+            print("    On Ubuntu/Debian: sudo apt install qpdf")
+            print("    On macOS: brew install qpdf")
+            print("    On Windows: Download from https://sourceforge.net/projects/qpdf/")
+            return
+    
+    # Check Python dependencies
+    print("\n[+] Dependency check:")
     if not KDBX_SUPPORT:
-        print("Note: Install 'pip install pykeepass' for KDBX support")
+        print("  - Install 'pip install pykeepass' for KDBX support")
+    if not RAR_SUPPORT:
+        print("  - Install 'pip install rarfile' for RAR support")
+    if not SSH_SUPPORT:
+        print("  - Install 'pip install pycryptodome' for SSH key support")
+    if file_ext in ['.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt']:
+        print("  - Install 'pip install msoffice-crypto' for Office document support")
     print()
     
     # Choose mode based on thread count
