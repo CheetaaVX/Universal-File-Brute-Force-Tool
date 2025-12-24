@@ -79,29 +79,28 @@ class UniversalBruteForcer:
     def try_password_7z(self, password):
         """Try password for 7z archives using 7z command line tool"""
         try:
-            # Create a temporary directory for extraction attempt
             with tempfile.TemporaryDirectory() as tmpdir:
-                # Build the command to test the password
+               
                 cmd = [
                     '7z', 'x', f'-p{password}', 
-                    '-y',  # Assume yes on all queries
-                    '-o' + tmpdir,  # Output directory
+                    '-y',  
+                    '-o' + tmpdir, y
                     self.target_file
                 ]
                 
-                # Run the command and capture output
+               
                 result = subprocess.run(
                     cmd, 
                     stdout=subprocess.PIPE, 
                     stderr=subprocess.PIPE,
-                    timeout=5  # Timeout after 5 seconds
+                    timeout=5  
                 )
                 
-                # Check if extraction was successful
+                
                 if result.returncode == 0:
                     return True
                 
-                # Check for specific error messages that indicate wrong password
+                
                 error_output = result.stderr.decode('utf-8', errors='ignore')
                 if "Wrong password" in error_output or "CRC Failed" in error_output:
                     return False
@@ -120,11 +119,11 @@ class UniversalBruteForcer:
         try:
             with rarfile.RarFile(self.target_file) as rf:
                 rf.setpassword(password)
-                # Try to read the first file in the archive
+              
                 file_list = rf.namelist()
                 if file_list:
                     with rf.open(file_list[0], 'r', pwd=password.encode()) as f:
-                        f.read(1)  # Just read one byte to test
+                        f.read(1)  
                     return True
             return False
         except (rarfile.BadRarFile, rarfile.RarCannotExec, rarfile.RarWrongPassword, Exception):
@@ -133,7 +132,7 @@ class UniversalBruteForcer:
     def try_password_pdf(self, password):
         """Try password for PDF files using qpdf"""
         try:
-            # Use qpdf to test the password
+           
             cmd = [
                 'qpdf', '--password=' + password, 
                 '--check', self.target_file
@@ -173,7 +172,7 @@ class UniversalBruteForcer:
             with open(self.target_file, 'rb') as f:
                 key_data = f.read()
             
-            # Try to import the key with the password
+            
             key = RSA.import_key(key_data, passphrase=password)
             return key is not None
         except (ValueError, TypeError, Exception):
@@ -195,11 +194,11 @@ class UniversalBruteForcer:
                 
             elif self.file_type == 'zip' and ZIP_SUPPORT:
                 with zipfile.ZipFile(self.target_file) as zf:
-                    # Try to read the first file in the archive
+                   
                     file_list = zf.namelist()
                     if file_list:
                         with zf.open(file_list[0], pwd=password.encode()) as f:
-                            f.read(1)  # Just read one byte to test
+                            f.read(1)  
                         return True
                 return False
                 
@@ -221,7 +220,6 @@ class UniversalBruteForcer:
         except (CredentialsError, RuntimeError, Exception):
             pass
             
-        # Progress reporting
         if self.attempts % 100 == 0:
             elapsed = time.time() - self.start_time
             speed = self.attempts / elapsed if elapsed > 0 else 0
@@ -279,7 +277,7 @@ def brute_force_multi(target_file, wordlist, num_threads=4):
     print(f"[+] Wordlist: {wordlist}")
     print("[+] Press Ctrl+C to stop\n")
     
-    # Read passwords into queue
+   
     password_queue = queue.Queue()
     try:
         with open(wordlist, 'r', encoding='utf-8', errors='ignore') as f:
@@ -293,7 +291,7 @@ def brute_force_multi(target_file, wordlist, num_threads=4):
     total_passwords = password_queue.qsize()
     print(f"[+] Loaded {total_passwords} passwords into queue")
     
-    # Start worker threads
+   
     threads = []
     for i in range(num_threads):
         t = threading.Thread(target=worker, args=(brute_forcer, password_queue))
@@ -301,7 +299,7 @@ def brute_force_multi(target_file, wordlist, num_threads=4):
         threads.append(t)
         t.start()
     
-    # Wait for completion or interrupt
+  
     try:
         while any(t.is_alive() for t in threads) and not brute_forcer.found:
             time.sleep(0.1)
@@ -312,7 +310,7 @@ def brute_force_multi(target_file, wordlist, num_threads=4):
         print("\n[!] Brute force interrupted by user")
         brute_forcer.found = False
     
-    # Wait for threads to finish
+  
     for t in threads:
         t.join(timeout=1)
     
@@ -335,7 +333,7 @@ def main():
         print(f"Error: Wordlist '{args.wordlist}' not found")
         return
     
-    # Check external dependencies based on file type
+   
     file_ext = Path(args.target_file).suffix.lower()
     
     if file_ext == '.7z':
@@ -360,7 +358,7 @@ def main():
             print("    On Windows: Download from https://sourceforge.net/projects/qpdf/")
             return
     
-    # Check Python dependencies
+ 
     print("\n[+] Dependency check:")
     if not KDBX_SUPPORT:
         print("  - Install 'pip install pykeepass' for KDBX support")
@@ -372,15 +370,14 @@ def main():
         print("  - Install 'pip install msoffice-crypto' for Office document support")
     print()
     
-    # Choose mode based on thread count
+  
     if args.threads <= 0:
-        # Single-threaded mode
+      
         brute_forcer = brute_force_single(args.target_file, args.wordlist)
     else:
-        # Multi-threaded mode
+      
         brute_forcer = brute_force_multi(args.target_file, args.wordlist, args.threads)
     
-    # Display results
     elapsed = time.time() - brute_forcer.start_time
     
     if brute_forcer.found:
@@ -404,3 +401,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
