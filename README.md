@@ -82,7 +82,7 @@ SSH Keys - Encrypted private keys (.id_rsa) - Requires ssh-keygen tool
 
 ### Basic Single-threaded Usage
 
-```bash
+```python
 # Test a KeePass database
 python BrootFile.py database.kdbx rockyou.txt
 
