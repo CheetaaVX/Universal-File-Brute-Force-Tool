@@ -84,7 +84,7 @@ class UniversalBruteForcer:
                 cmd = [
                     '7z', 'x', f'-p{password}', 
                     '-y',  
-                    '-o' + tmpdir, y
+                    '-o' + tmpdir, y,
                     self.target_file
                 ]
                 
@@ -189,8 +189,11 @@ class UniversalBruteForcer:
             
         try:
             if self.file_type == 'kdbx' and KDBX_SUPPORT:
-                kp = PyKeePass(self.target_file, password=password)
-                return True
+                if not KDBX_SUPPORT:
+                    return False
+                else:
+                    kp = PyKeePass(self.target_file, password=password)
+                    return True
                 
             elif self.file_type == 'zip' and ZIP_SUPPORT:
                 with zipfile.ZipFile(self.target_file) as zf:
@@ -226,7 +229,8 @@ class UniversalBruteForcer:
             if threading.active_count() > 1:
                 print(f"Attempts: {self.attempts} | Speed: {speed:.1f}/s | Threads: {threading.active_count()-1}")
             else:
-                print(f"Attempts: {self.attempts} | Speed: {speed:.1f}/s | Current: {password}")
+                pass    
+            #print(f"Attempts: {self.attempts} | Speed: {speed:.1f}/s | Current: {password}")
             
         return False
 
@@ -247,6 +251,9 @@ def brute_force_single(target_file, wordlist):
                 if brute_forcer.try_password(password):
                     brute_forcer.password = password.strip()
                     brute_forcer.found = True
+                    break
+                else:
+                    print(f"Dependency Missing!!!")
                     break
                     
     except KeyboardInterrupt:
@@ -401,4 +408,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
